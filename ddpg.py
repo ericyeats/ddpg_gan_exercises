@@ -115,12 +115,12 @@ if __name__ == "__main__":
 
     parser.add_argument('--h_dim', type=int, default=64, help="hidden layer size")
     parser.add_argument('--gravity', type=float, default=10., help="acceleration of gravity for Pendulum-v1 environment")
-    parser.add_argument('--gamma', type=float, default=0.9, help='temporal reward discounting hyperparameter. should be in [0, 1]')
-    parser.add_argument('--replay_buffer_size', type=int, default=64, help='replay buffer size to approx iid')
+    parser.add_argument('--gamma', type=float, default=0.2, help='temporal reward discounting hyperparameter. should be in [0, 1]')
+    parser.add_argument('--replay_buffer_size', type=int, default=256, help='replay buffer size to approx iid')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size for training')
     parser.add_argument('--target_rho', type=float, default=0.95, help='target network update momentum. tn = tn*rho + on(1-rho)')
-    parser.add_argument('--exploration_scale', type=float, default=0.5, help='scale of Gaussian noise to add to actions during learning')
-    parser.add_argument('--n_iters', type=int, default=1000, help='number of training iterations')
+    parser.add_argument('--exploration_scale', type=float, default=1., help='scale of Gaussian noise to add to actions during learning')
+    parser.add_argument('--n_iters', type=int, default=2000, help='number of training iterations')
     parser.add_argument('--n_eval_iters', type=int, default=100, help='number of iters for evaluation')
     parser.add_argument('--n_updates_per_iter', type=int, default=1, help='A, Q updates per training iteration')
 
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         replay_buffer_size=args.replay_buffer_size
         )
     
-    A_opt = K.optimizers.Adam(1e-4)
+    A_opt = K.optimizers.Adam(1e-3)
     Q_opt = K.optimizers.Adam(1e-4)
 
     msbe_loss_tracker = []
@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
         # observe the state
         # select an action (with noise). clip
-        noisy_act = ddpg.A_net_predict(obs[None, :], args.exploration_scale)[0]
+        noisy_act = ddpg.A_net_predict(obs[None, :], noise_scale=args.exploration_scale)[0]
 
         # observe next state, reward, and done signal
         tup = env.step(noisy_act)
@@ -226,13 +226,18 @@ if __name__ == "__main__":
 
     control_tracker = []
     reward_tracker = []
+    angle_tracker = []
+    vel_tracker = []
     # visualize the state, control signals, and reward with time for one trial
     obs = env.reset()[0]
     for iteration in range(args.n_eval_iters):
+        x, y, vel = obs
+        angle = np.arctan2(y, x)
+        angle_tracker.append(angle)
+        vel_tracker.append(vel)
         # observe the state
         # select an action (without noise). clip
         act = ddpg.A_net_predict(obs[None, :])[0]
-        print(iteration, act)
         # observe next state, reward, and done signal
         tup = env.step(act)
         next_obs, reward, done, truncated, info = tup
@@ -243,16 +248,17 @@ if __name__ == "__main__":
             obs = next_obs
 
         control_tracker.append(act)
-        reward_tracker.append(act)
+        reward_tracker.append(reward)
 
     plt.figure()
 
     plt.plot(control_tracker, linewidth=3, label="Control Signal")
     plt.plot(reward_tracker, linewidth=3, label="Reward")
+    plt.plot(angle_tracker, linewidth=3, label='Angle (Radians)')
+    plt.plot(vel_tracker, linewidth=3, label='Angular Velocity (Rad/s)')
     plt.legend()
     plt.xlabel("Eval Iteration")
     plt.ylabel("Value")
     plt.grid()
     plt.savefig("./RL_eval.png")
     
-    # evaluate the network by plotting reward with time for a few trials
